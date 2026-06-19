@@ -56,6 +56,197 @@ async function run() {
 
     const subscriptionsCollection = db.collection("subscriptions");
     const userCollection = db.collection("user");
+    const lessonCOllection= db.collection("lessons")
+
+    //lessons
+        app.post('/lessons',async (req, res) => {  
+    const lessonData = req.body;
+    const newLessonData={
+      ...lessonData,
+      createdAt:new Date(),
+    }
+    const result=await lessonCOllection.insertOne(newLessonData)
+    res.send(result);
+})
+
+app.get("/lessons/all", async (req, res) => {
+      const result = await lessonCOllection.find().toArray();
+      res.send(result);
+    });
+
+
+
+    //user lessons
+
+    app.get("/lessons/my/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const result = await lessonCOllection
+      .find({ creatorId: userId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Failed to fetch lessons" });
+  }
+});
+//toggle visibility
+app.patch("/lessons/visibility/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { visibility } = req.body;
+
+    const result = await lessonCOllection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: { visibility }
+      }
+    );
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Visibility update failed" });
+  }
+});
+
+//--update accessability--------------
+
+app.patch("/lessons/access/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { access, userPlan } = req.body;
+
+    // optional safety check
+    if (access === "premium" && userPlan !== "premium") {
+      return res.status(403).send({
+        error: "Only premium users can set premium access",
+      });
+    }
+
+    const result = await lessonCOllection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: { access }
+      }
+    );
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Access update failed" });
+  }
+});
+
+//Delete lesson
+
+app.delete("/lessons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const result = await lessonCOllection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Delete failed" });
+  }
+});
+
+//UPDATE STATS (reactions / saves)
+app.patch("/lessons/stats/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { type } = req.body; // "reaction" | "save"
+
+    const field = type === "reaction" ? "reactions" : "saves";
+
+    const result = await lessonCOllection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $inc: { [field]: 1 }
+      }
+    );
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: "Stats update failed" });
+  }
+});
+
+//Specific lesson to update
+app.get("/api/lessons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const lesson = await lessonCOllection.findOne({
+      _id: new ObjectId(id)
+    });
+    res.send(lesson);
+  } catch (err) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch lesson",
+      error: err.message,
+    });
+  }
+});
+
+// UPDATE LESSON
+app.patch("/lessons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const {
+      title,
+      description,
+      category,
+      tone,
+      image,
+      access,
+    } = req.body;
+
+    const result = await lessonCOllection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          title,
+          description,
+          category,
+          tone,
+          image,
+          access,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Lesson not found",
+      });
+    }
+
+    res.send({
+      success: true,
+      message: "Lesson updated successfully",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    res.status(500).send({
+      success: false,
+      message: "Update failed",
+      error: err.message,
+    });
+  }
+});
+
+
+    //Subscription
 
  app.post("/subscription", async (req, res) => {
   try {
