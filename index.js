@@ -8,6 +8,7 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 
 // const { createRemoteJWKSet, jwtVerify } = require('jose-cjs')
 
@@ -20,38 +21,7 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
-
-//middleware
-
-// const JWKS = createRemoteJWKSet(
-//   new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
-// );
-
-//  ---------------------------------
-
-// const verifyToken = async(req, res, next) => {
-//   const authHeader = req?.headers.authorization;
-//   if (!authHeader) {
-//     return res.status(401).send({ message: "Unauthorized access1" });
-//   }
-//   const token= authHeader.split(" ")[1]
-//   if(!token){
-//     return res.status(401).send({ message: "Unauthorized access2" });
-//   }
-//  try{
-//    const {payload} =await jwtVerify(token, JWKS)
-//   console.log(payload)
-//     next();
-//  }
-//  catch(err){
-//    return res.status(401).send({ message: "Unauthorized access3" });
-//  }
-// }
-
-async function run() {
-  try {
-    await client.connect();
-    const db = client.db("LifeAtlas");
+const db = client.db("LifeAtlas");
     //Database collections
 
     const subscriptionsCollection = db.collection("subscriptions");
@@ -60,10 +30,80 @@ async function run() {
     const savedLessonCollection=db.collection("savedLessons")
     const likedLessonCollection=db.collection("likedLessons")
     const commentCollection=db.collection("comment")
+    const sessionCollection = db.collection('session');
 
-    //lessons
-        app.post('/lessons',async (req, res) => {  
+//middleware
+
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+);
+
+//  ---------------------------------
+
+const verifyToken = async(req, res, next) => {
+  const authHeader = req?.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized access1" });
+  }
+  const token= authHeader.split(" ")[1]
+  // console.log("Token", token)
+  if(!token){
+    return res.status(401).send({ message: "Unauthorized access2" });
+  }
+ try{
+  //  const {payload} =await jwtVerify(token, JWKS)
+  // req.user=payload;
+  // console.log("payload", payload)
+
+   const query = { token: token }
+    const session = await sessionCollection.findOne(query);
+
+    if (!session) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+    const userId = session.userId;
+
+
+    const userQuery = {
+        _id: userId
+    }
+
+    const user = await userCollection.findOne(userQuery);
+    // console.log("Verify user", user)
+    if (!user) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+    // set data in the req object
+    req.user = user;
+
+    next();
+ }
+ catch(err){
+  // console.log(req.originalUrl)
+  // console.log("error", err)
+   return res.status(401).send({ message: "Unauthorized access3" });
+ }
+}
+const verifyPremiumUser=async(req,res,next)=>{
+  const user=req.user;
+  
+  // console.log("user verify:" , user);
+  if(user.role!=="user" || user.plan!=="premium"){
+    return res.status(403).send({message:"Forbidden"})
+  }
+  next()
+}
+
+async function run() {
+  try {
+    // await client.connect();
+    
+
+    //lessons-----------todo
+        app.post('/lessons',verifyToken,verifyPremiumUser, async (req, res) => {  
     const lessonData = req.body;
+    console.log(lessonData)
     const newLessonData={
       ...lessonData,
       createdAt:new Date(),
@@ -72,11 +112,13 @@ async function run() {
     res.send(result);
 })
 
+//eta sobai dekhte parbe. so don't need to verify
 app.get("/lessons/all", async (req, res) => {
       const result = await lessonCOllection.find().sort({ createdAt: -1 }).toArray();
       res.send(result);
     });
 
+    //etao sobai dekhte parbe, but ta ke login hote hobe----------todo
 app.get("/lessons/:id", async (req, res) => {
       const {id} = req.params
       console.log(id)
@@ -88,8 +130,8 @@ app.get("/lessons/:id", async (req, res) => {
     });
 
 
-    // saved lessons
-    app.post("/savedlessons",async (req, res) => {  
+    // saved lessons--------todo
+    app.post("/savedlessons",verifyToken,async (req, res) => {  
     const savedLessonData = req.body;
    
     const alreadySaved = await savedLessonCollection.findOne({
@@ -120,12 +162,12 @@ app.get("/lessons/:id", async (req, res) => {
       $inc: { saveCount: 1 }
       }
     )
-    res.send(updateLesson);
+    // res.send(updateLesson);
     
 })
 
-// get favorite lessons from the saved lesson collection
- app.get("/saved/lessons/favorite/:id", async (req, res) => {
+// get favorite lessons from the saved lesson collection------todo
+ app.get("/saved/lessons/favorite/:id",verifyToken, async (req, res) => {
       
     const {id} = req.params;
  const query = { userId: id };
@@ -137,41 +179,59 @@ app.get("/lessons/:id", async (req, res) => {
   );
 
 //Liked Lessons
-    app.post("/likedlessons",async (req, res) => {  
+// ❤️ Liked Lessons Backend Route
+app.post("/likedlessons", verifyToken, async (req, res) => {  
+  try {
     const LikedLessonData = req.body;
 
+    // ১. ইউজার ইতিমধ্যে লাইক করেছে কিনা চেক করা
     const alreadyLiked = await likedLessonCollection.findOne({
-      lessonId: likedLessonData.lessonId,
-      userId: likedLessonData.userId
+      lessonId: LikedLessonData.lessonId,
+      userId: LikedLessonData.userId
     });
 
-    // ২. যদি অলরেডি লাইক দেওয়া থাকে, তবে ৪০০ স্ট্যাটাসসহ ফেরত পাঠানো হবে
     if (alreadyLiked) {
       return res.status(400).send({ 
         success: false, 
         message: "You have already liked this lesson!" 
       });
     }
-    const newLikedLessonData={
-      ...LikedLessonData,
-      createdAt:new Date(),
-    }
-    const result=await likedLessonCollection.insertOne(newLikedLessonData)
-    res.send(result);
 
-    //update lesson for user saved it 
-     const updateLesson = await lessonCOllection.updateOne(
+    // ২. নতুন লাইক ডেটা তৈরি ও ইনসার্ট করা
+    const newLikedLessonData = {
+      ...LikedLessonData,
+      createdAt: new Date(),
+    };
+    
+    const result = await likedLessonCollection.insertOne(newLikedLessonData);
+
+  
+    const updateLesson = await lessonCOllection.updateOne(
       {
         _id: new ObjectId(LikedLessonData.lessonId),
       },
       {
-       $inc: { likeCount: 1 }
+        $inc: { likeCount: 1 },
       }
-    )
-    res.send(updateLesson);
-})
-//Comment on the Lessons
-    app.post("/comment",async (req, res) => {  
+    );
+
+    return res.status(200).send({
+      success: true,
+      message: "Lesson liked successfully!",
+      result,
+      updateLesson,
+    });
+
+  } catch (error) {
+    console.error("Backend Like Error:", error);
+    return res.status(500).send({ 
+      success: false, 
+      message: "Internal server error while liking lesson." 
+    });
+  }
+});
+//Comment on the Lessons----todo
+    app.post("/comment",verifyToken ,async (req, res) => {  
     const commentData = req.body;
     const newCommentLessonData={
       ...commentData,
@@ -222,9 +282,8 @@ app.get("/lessons/:id", async (req, res) => {
 
 
     //user lessons
-
     app.get("/lessons/my/:creatorId", async (req, res) => {
-       console.log( " request params: ",req.params)
+      //  console.log( " request params: ",req.params)
   try {
     const creatorId = req.params.creatorId;
    
@@ -239,8 +298,8 @@ app.get("/lessons/:id", async (req, res) => {
     res.status(500).send({ error: "Failed to fetch lessons" });
   }
 });
-//toggle visibility
-app.patch("/lessons/visibility/:id", async (req, res) => {
+//toggle visibility---------todo, ekhane verifyadmin add kora lagbe
+app.patch("/lessons/visibility/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const { visibility } = req.body;
@@ -260,7 +319,7 @@ app.patch("/lessons/visibility/:id", async (req, res) => {
 
 //--update accessability--------------
 
-app.patch("/lessons/access/:id", async (req, res) => {
+app.patch("/lessons/access/:id",verifyToken,verifyPremiumUser, async (req, res) => {
   try {
     const id = req.params.id;
     const { access, userPlan } = req.body;
@@ -287,7 +346,7 @@ app.patch("/lessons/access/:id", async (req, res) => {
 
 //Delete lesson
 
-app.delete("/lessons/:id", async (req, res) => {
+app.delete("/lessons/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -301,29 +360,9 @@ app.delete("/lessons/:id", async (req, res) => {
   }
 });
 
-//UPDATE STATS (reactions / saves)
-app.patch("/lessons/stats/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { type } = req.body; // "reaction" | "save"
 
-    const field = type === "reaction" ? "reactions" : "saves";
-
-    const result = await lessonCOllection.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $inc: { [field]: 1 }
-      }
-    );
-
-    res.send(result);
-  } catch (err) {
-    res.status(500).send({ error: "Stats update failed" });
-  }
-});
-
-//Specific lesson to update
-app.get("/api/lessons/:id", async (req, res) => {
+//Specific lesson to update-----todo
+app.get("/api/lessons/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -340,8 +379,8 @@ app.get("/api/lessons/:id", async (req, res) => {
   }
 });
 
-// UPDATE LESSON
-app.patch("/lessons/:id", async (req, res) => {
+// UPDATE LESSON----todo
+app.patch("/lessons/:id",verifyToken,verifyPremiumUser, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -392,8 +431,8 @@ app.patch("/lessons/:id", async (req, res) => {
   }
 });
 
-
-app.patch('/profile/:id', async (req, res) => {
+//todo
+app.patch('/profile/:id',verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const updateData = req.body;
@@ -412,9 +451,11 @@ app.patch('/profile/:id', async (req, res) => {
     res.status(500).send({ success: false, message: error.message });
   }
 });
+
+
     //Subscription
 
- app.post("/subscription", async (req, res) => {
+ app.post("/subscription",verifyToken, async (req, res) => {
   try {
     console.log("API HIT");
     console.log("BODY:", req.body);
