@@ -26,12 +26,13 @@ const db = client.db("LifeAtlas");
 
     const subscriptionsCollection = db.collection("subscriptions");
     const userCollection = db.collection("user");
-    const lessonCOllection= db.collection("lessons")
+    const lessonCollection= db.collection("lessons")
     const savedLessonCollection=db.collection("savedLessons")
     const likedLessonCollection=db.collection("likedLessons")
     const commentCollection=db.collection("comment")
     const sessionCollection = db.collection('session');
-
+    const featuredLessonCollection=db.collection("featuredLesson")
+    const reportLessonCollection=db.collection("reportLesson")
 //middleware
 
 const JWKS = createRemoteJWKSet(
@@ -108,24 +109,33 @@ async function run() {
       ...lessonData,
       createdAt:new Date(),
     }
-    const result=await lessonCOllection.insertOne(newLessonData)
+    const result=await lessonCollection.insertOne(newLessonData)
     res.send(result);
+      //update lesson for user saved it 
+     const updateUser = await userCollection.updateOne(
+      {
+        _id: new ObjectId(lessonData.creatorId),
+      },
+      {
+      $inc: { totalLesson: 1 }
+      }
+    )
 })
 
 //eta sobai dekhte parbe. so don't need to verify
 app.get("/lessons/all", async (req, res) => {
-      const result = await lessonCOllection.find().sort({ createdAt: -1 }).toArray();
+      const result = await lessonCollection.find().sort({ createdAt: -1 }).toArray();
       res.send(result);
     });
 
-    //etao sobai dekhte parbe, but ta ke login hote hobe----------todo
+    //etao sobai dekhte parbe, but ta ke login hote hobe--
 app.get("/lessons/:id", async (req, res) => {
       const {id} = req.params
       console.log(id)
       const query= {
         _id : new ObjectId(id)
       }
-      const result = await lessonCOllection.findOne(query)
+      const result = await lessonCollection.findOne(query)
       res.send(result);
     });
 
@@ -154,7 +164,7 @@ app.get("/lessons/:id", async (req, res) => {
     res.send(result);
 
     //update lesson for user saved it 
-     const updateLesson = await lessonCOllection.updateOne(
+     const updateLesson = await lessonCollection.updateOne(
       {
         _id: new ObjectId(savedLessonData.lessonId),
       },
@@ -206,7 +216,7 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     const result = await likedLessonCollection.insertOne(newLikedLessonData);
 
   
-    const updateLesson = await lessonCOllection.updateOne(
+    const updateLesson = await lessonCollection.updateOne(
       {
         _id: new ObjectId(LikedLessonData.lessonId),
       },
@@ -252,15 +262,15 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     };
 
     //update lesson for user saved it 
-     const updateLesson = await lessonCOllection.updateOne(
+     const updateLesson = await lessonCollection.updateOne(
       {
         _id: new ObjectId(commentData.lessonId),
       },
       {
-        // $push এর মাধ্যমে 'comments' নামের অ্যারে তৈরি হবে এবং তাতে ডাটা ঢুকবে
+       
         $push: { comments: newCommentObj }, 
         
-        // $inc এর মাধ্যমে 'commentCount' ফিল্ডটি না থাকলে তৈরি হবে এবং ১ করে বাড়বে
+       
         $inc: { commentCount: 1 }          
       }
     )
@@ -288,7 +298,7 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     const creatorId = req.params.creatorId;
    
 
-    const result = await lessonCOllection
+    const result = await lessonCollection
       .find({ creatorId})
       .sort({ createdAt: -1 })
       .toArray();
@@ -304,7 +314,7 @@ app.patch("/lessons/visibility/:id",verifyToken, async (req, res) => {
     const id = req.params.id;
     const { visibility } = req.body;
 
-    const result = await lessonCOllection.updateOne(
+    const result = await lessonCollection.updateOne(
       { _id: new ObjectId(id) },
       {
         $set: { visibility }
@@ -331,7 +341,7 @@ app.patch("/lessons/access/:id",verifyToken,verifyPremiumUser, async (req, res) 
       });
     }
 
-    const result = await lessonCOllection.updateOne(
+    const result = await lessonCollection.updateOne(
       { _id: new ObjectId(id) },
       {
         $set: { access }
@@ -346,17 +356,48 @@ app.patch("/lessons/access/:id",verifyToken,verifyPremiumUser, async (req, res) 
 
 //Delete lesson
 
-app.delete("/lessons/:id",verifyToken, async (req, res) => {
+// app.delete("/lessons/:id",verifyToken, async (req, res) => {
+//   try {
+//     const id = req.params.id;
+
+//     const result = await lessonCollection.deleteOne({
+//       _id: new ObjectId(id),
+//     });
+
+//     res.send(result);
+//   } catch (err) {
+//     res.status(500).send({ error: "Delete failed" });
+//   }
+
+// });
+app.delete("/lessons/:id", verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
 
-    const result = await lessonCOllection.deleteOne({
-      _id: new ObjectId(id),
-    });
+    // ১. মূল লেসন কালেকশন থেকে লেসনটি ডিলিট করুন
+    const result = await lessonCollection.deleteOne(query);
 
-    res.send(result);
+    // ২. যদি মূল লেসনটি সফলভাবে ডিলিট হয় (deletedCount ১ বা তার বেশি হলে), তবে ফিচার্ড কালেকশন থেকেও সেটি ডিলিট করুন
+    if (result.deletedCount > 0 || result.acknowledged) {
+      await featuredLessonCollection.deleteOne({
+        $or: [
+          { _id: new ObjectId(id) }, 
+          { lessonId: id },          
+          { lessonId: new ObjectId(id) } 
+        ]
+      });
+    }
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ success: false, message: "Lesson not found" });
+    }
+
+    res.send({ success: true, ...result });
+
   } catch (err) {
-    res.status(500).send({ error: "Delete failed" });
+    console.error("Delete Error:", err);
+    res.status(500).send({ success: false, error: "Delete failed" });
   }
 });
 
@@ -366,7 +407,7 @@ app.get("/api/lessons/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
-    const lesson = await lessonCOllection.findOne({
+    const lesson = await lessonCollection.findOne({
       _id: new ObjectId(id)
     });
     res.send(lesson);
@@ -393,7 +434,7 @@ app.patch("/lessons/:id",verifyToken,verifyPremiumUser, async (req, res) => {
       access,
     } = req.body;
 
-    const result = await lessonCOllection.updateOne(
+    const result = await lessonCollection.updateOne(
       {
         _id: new ObjectId(id),
       },
@@ -431,7 +472,6 @@ app.patch("/lessons/:id",verifyToken,verifyPremiumUser, async (req, res) => {
   }
 });
 
-//todo
 app.patch('/profile/:id',verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
@@ -496,6 +536,96 @@ app.patch('/profile/:id',verifyToken, async (req, res) => {
     });
   }
 });
+
+
+//admin related code here........
+
+app.get("/users", async (req, res) => {
+      const result = await userCollection.find().sort({ createdAt: -1 }).toArray();
+      res.send(result);
+    });
+
+
+//update user Information
+
+app.patch('/users/update/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updateData = req.body;
+
+    const query = { _id: new ObjectId(id) };
+    
+    const updateDoc = {
+      $set: { ...updateData } 
+    };
+
+    const result = await userCollection.updateOne(query, updateDoc);
+    
+    res.send({ success: true, message: "Profile updated!", result });
+
+  } catch (error) {
+    res.status(500).send({ success: false, message: error.message });
+  }
+});
+
+//------------------
+//featured function
+//----------------
+//post featured lessons
+
+app.post("/featured/lessons", async (req, res) => {
+  const lesson = req.body;
+  const lessonId = lesson._id;
+  
+  // চেক করুন এই লেসনটি অলরেডি ফিচারড কালেকশনে আছে কি না
+  const exists = await featuredLessonCollection.findOne({ _id: new ObjectId(lessonId) });
+
+  if (exists) {
+    // ১. যদি থাকে, তবে ফিচারড কালেকশন থেকে রিমুভ করুন
+    await featuredLessonCollection.deleteOne({ _id: new ObjectId(lessonId) });
+    
+    // 💥 অত্যন্ত গুরুত্বপূর্ণ: মূল কালেকশনেও স্ট্যাটাস false করে দিন
+    await lessonCollection.updateOne(
+      { _id: new ObjectId(lessonId) },
+      { $set: { isFeatured: false } }
+    );
+    
+    return res.send({ message: "Removed", isFeatured: false });
+  } else {
+    // ২. যদি না থাকে, তবে নতুন করে ফিচারড কালেকশনে অ্যাড করুন
+    await featuredLessonCollection.insertOne({ ...lesson, _id: new ObjectId(lessonId), isFeatured: true });
+    
+    // 💥 অত্যন্ত গুরুত্বপূর্ণ: মূল কালেকশনেও স্ট্যাটাস true করে দিন
+    await lessonCollection.updateOne(
+      { _id: new ObjectId(lessonId) },
+      { $set: { isFeatured: true } }
+    );
+    
+    return res.send({ message: "Added", isFeatured: true });
+  }
+});
+
+//get featured lessons
+app.get("/featured/lessons", async (req, res) => {
+      const result = await featuredLessonCollection.find().limit(4).sort({ createdAt: -1 }).toArray();
+      res.send(result);
+    });
+
+
+//Post report Lesson
+
+     app.post('/report/lesson', async (req, res) => {  
+    const lessonData = req.body;
+    // console.log(lessonData)
+    const newLessonData={
+      ...lessonData,
+      createdAt:new Date(),
+    }
+    const result=await reportLessonCollection.insertOne(newLessonData)
+    res.send(result);
+   
+})
+
 
     await client.db("admin").command({ ping: 1 });
     console.log(
