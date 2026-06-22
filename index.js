@@ -136,6 +136,71 @@ app.get("/lessons/all", async (req, res) => {
       res.send(result);
     });
 
+
+    // 🎯 Top contributors API End-point
+// 🎯 চূড়ান্ত ও এরর-ফ্রি ব্যাকঅ্যান্ড API
+app.get('/api/lessons/top-contributors',verifyToken, async (req, res) => {
+  try {
+    // ⚠️ কোনোভাবেই এখানে ObjectId(...) বা এরম কিছু ব্যবহার করবেন না, সরাসরি এগ্রিগেশন চালান
+    const topContributors = await lessonCollection.aggregate([
+      // ১. ফিল্টার: যে সব লেসনে creatorId এবং creatorName ভ্যালিড আছে
+      {
+        $match: {
+          creatorId: { $exists: true, $ne: null, $ne: "" },
+          creatorName: { $exists: true, $ne: null, $ne: "" }
+        }
+      },
+      // ২. গ্রুপিং: creatorId (তা সে নরমাল স্ট্রিং হোক বা ObjectId) দিয়ে গ্রুপ করা
+      {
+        $group: {
+          _id: "$creatorId",
+          name: { $first: "$creatorName" },
+          image: { $first: "$creatorImg" },
+          role: { $first: "$creatorRole" },
+          email: { $first: "$creatorEmail" },
+          totalLessons: { $sum: 1 }
+        }
+      },
+      // ৩. সর্টিং: যার টোটাল লেসন বেশি সে ওপরে থাকবে
+      {
+        $sort: { totalLessons: -1 }
+      },
+      // ৪. লিমিট: সর্বোচ্চ ৫ জন
+      {
+        $limit: 5
+      },
+      // ৫. প্রজেকশন: ফ্রন্টঅ্যান্ডের ফরম্যাটে ডেটা পাঠানো
+      {
+        $project: {
+          _id: 0,
+          creatorId: "$_id", 
+          name: { $ifNull: ["$name", "Anonymous Mind"] },
+          role: { $ifNull: ["$role", "Contributor"] },
+          email: { $ifNull: ["$email", "N/A"] },
+          image: { $ifNull: ["$image", ""] },
+          totalLessons: 1
+        }
+      }
+    ]).toArray();
+
+    // ডিব্যাগিং এর জন্য কনসোল লগ
+    console.log("🚀 Leaderboard Computed successfully:", topContributors);
+
+    res.status(200).json({
+      success: true,
+      data: topContributors
+    });
+
+  } catch (error) {
+    console.error("❌ Leaderboard MongoDB Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch lesson", 
+      error: error.message 
+    });
+  }
+});
+
     //etao sobai dekhte parbe, but ta ke login hote hobe--
 app.get("/lessons/:id", async (req, res) => {
       const {id} = req.params
@@ -926,6 +991,70 @@ app.get('/api/user/dashboard-summary',verifyToken, async (req, res) => {
 
 
 
+//Home Page Extra section functions
+// // 🎯 Top contributors API End-point
+// // 🎯 চূড়ান্ত ও এরর-ফ্রি ব্যাকঅ্যান্ড API
+// app.get('/api/lessons/top-contributors', async (req, res) => {
+//   try {
+//     // ⚠️ কোনোভাবেই এখানে ObjectId(...) বা এরম কিছু ব্যবহার করবেন না, সরাসরি এগ্রিগেশন চালান
+//     const topContributors = await lessonCollection.aggregate([
+//       // ১. ফিল্টার: যে সব লেসনে creatorId এবং creatorName ভ্যালিড আছে
+//       {
+//         $match: {
+//           creatorId: { $exists: true, $ne: null, $ne: "" },
+//           creatorName: { $exists: true, $ne: null, $ne: "" }
+//         }
+//       },
+//       // ২. গ্রুপিং: creatorId (তা সে নরমাল স্ট্রিং হোক বা ObjectId) দিয়ে গ্রুপ করা
+//       {
+//         $group: {
+//           _id: "$creatorId",
+//           name: { $first: "$creatorName" },
+//           image: { $first: "$creatorImg" },
+//           role: { $first: "$creatorRole" },
+//           email: { $first: "$creatorEmail" },
+//           totalLessons: { $sum: 1 }
+//         }
+//       },
+//       // ৩. সর্টিং: যার টোটাল লেসন বেশি সে ওপরে থাকবে
+//       {
+//         $sort: { totalLessons: -1 }
+//       },
+//       // ৪. লিমিট: সর্বোচ্চ ৫ জন
+//       {
+//         $limit: 5
+//       },
+//       // ৫. প্রজেকশন: ফ্রন্টঅ্যান্ডের ফরম্যাটে ডেটা পাঠানো
+//       {
+//         $project: {
+//           _id: 0,
+//           creatorId: "$_id", 
+//           name: { $ifNull: ["$name", "Anonymous Mind"] },
+//           role: { $ifNull: ["$role", "Contributor"] },
+//           email: { $ifNull: ["$email", "N/A"] },
+//           image: { $ifNull: ["$image", ""] },
+//           totalLessons: 1
+//         }
+//       }
+//     ]).toArray();
+
+//     // ডিব্যাগিং এর জন্য কনসোল লগ
+//     console.log("🚀 Leaderboard Computed successfully:", topContributors);
+
+//     res.status(200).json({
+//       success: true,
+//       data: topContributors
+//     });
+
+//   } catch (error) {
+//     console.error("❌ Leaderboard MongoDB Error:", error);
+//     res.status(500).json({ 
+//       success: false, 
+//       message: "Failed to fetch lesson", 
+//       error: error.message 
+//     });
+//   }
+// });
 
 
     await client.db("admin").command({ ping: 1 });
