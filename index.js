@@ -612,19 +612,314 @@ app.get("/featured/lessons", async (req, res) => {
     });
 
 
-//Post report Lesson
 
-     app.post('/report/lesson', async (req, res) => {  
+// Post report Lesson
+app.post('/report/lesson', async (req, res) => {  
+  try {
     const lessonData = req.body;
-    // console.log(lessonData)
-    const newLessonData={
-      ...lessonData,
-      createdAt:new Date(),
+    
+    if (!lessonData._id) {
+      return res.status(400).send({ success: false, message: "Lesson ID is required" });
     }
-    const result=await reportLessonCollection.insertOne(newLessonData)
-    res.send(result);
+
+    const lessonIdStr = lessonData._id;
+
+    const reportResult = await reportLessonCollection.updateOne(
+      { lessonId: lessonIdStr }, 
+      {
+        $setOnInsert: {
+          title: lessonData.title,
+          description: lessonData.description,
+          category: lessonData.category,
+          access:lessonData.access,
+          creatorName: lessonData.creatorName,
+          creatorId:lessonData.creatorId,
+          creatorPlan:lessonData.creatorPlan,
+          saveCount:lessonData.saveCount,
+          creatorId: lessonData.creatorId,
+          createdAt: new Date(),
+        },
+        $inc: { reportCount: 1 }, // যতবার রিপোর্ট হবে এই কাউন্ট ১ করে বাড়বে
+        $set: { updatedAt: new Date() } // সর্বশেষ রিপোর্টের সময় ট্র্যাক রাখার জন্য
+      },
+      { upsert: true } // ম্যাচ না করলে নতুন ডকুমেন্ট বানাবে, ম্যাচ করলে আপডেট করবে
+    );
+
+    // ২. মূল lessonCollection-এ রিপোর্টের মেইন কাউন্ট ১ বাড়িয়ে দেওয়া
+    const updateLesson = await lessonCollection.updateOne(
+      { _id: new ObjectId(lessonIdStr) },
+      { $inc: { report: 1 } }
+    );
+
+    // ফ্রন্টএন্ডে সাকসেস রেসপন্স পাঠানো
+    res.send({ 
+      success: true, 
+      message: "Report processed successfully", 
+      reportResult, 
+      updateLesson 
+    });
+
+  } catch (error) {
+    console.error("Report Lesson Error:", error);
+    res.status(500).send({ success: false, message: "Internal Server Error" });
+  }
+});
+
+//get reported lessons
+app.get("/report/lesson", async (req, res) => {
+      const result = await reportLessonCollection.find().sort({ createdAt: -1 }).toArray();
+      res.send(result);
+    });
+
+// Delete report Permanently
+app.delete("/report/lessons/delete/permanently/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    
+    const query = { _id: new ObjectId(id) };
+    const result = await lessonCollection.deleteOne(query);
+
+    if (result.deletedCount > 0) {
+      
+      await featuredLessonCollection.deleteOne({
+        $or: [
+          { _id: new ObjectId(id) }, 
+          { lessonId: id },          
+          { lessonId: new ObjectId(id) } 
+        ]
+      });
+
+ 
+      await reportLessonCollection.deleteOne({
+        $or: [
+          { lessonId: id },
+          { lessonId: new ObjectId(id) }
+        ]
+      });
+      
+      return res.send({ success: true, message: "Lesson and all associated reports deleted permanently", ...result });
+    }
+
    
-})
+    return res.status(404).send({ success: false, message: "Lesson not found or already deleted" });
+
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).send({ success: false, error: "Delete failed due to server error" });
+  }
+});
+
+// Delete report from the reported lesson collection to ignore
+app.delete('/report/lessons/delete/ignore/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+   
+    const result = await reportLessonCollection.deleteMany({
+      $or: [
+        { lessonId: id },
+        { lessonId: new ObjectId(id) },
+        { _id: new ObjectId(id) } 
+      ]
+    });
+
+    if (result.deletedCount > 0) {
+      res.send({ success: true, ...result });
+    } else {
+      res.status(404).send({ success: false, message: "No reports found to clear for this ID" });
+    }
+
+  } catch (err) {
+    console.error("Ignore Report Error:", err);
+    res.status(500).send({ success: false, error: "Failed to dismiss reports" });
+  }
+});
+
+
+//dashboard er jonno information neyar jonno
+
+app.get("/api/admin/dashboard-summary", async (req, res) => {
+  let totalLessons = 0;
+  let totalSaved = 0;
+  let recentLessons = [];
+  let chartData = [];
+
+  const daysOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  chartData = daysOrder.map(day => ({ name: day, contributions: 0 }));
+
+
+  try {
+    totalLessons = await lessonCollection.countDocuments({});
+  } catch (e) {
+    console.error("❌ Error in lessonCollection.countDocuments:", e.message);
+  }
+
+ 
+  try {
+    totalSaved = await savedLessonCollection.countDocuments({});
+  } catch (e) {
+    console.error("❌ Error in savedLessonCollection.countDocuments:", e.message);
+  }
+
+
+  try {
+    recentLessons = await lessonCollection.find({})
+      .sort({ _id: -1 }) 
+      .limit(3)
+      .project({ _id: 1, title: 1, category: 1, createdAt: 1 }) 
+      .toArray();
+  } catch (e) {
+    console.error("❌ Error in recentLessons query:", e.message);
+  }
+
+
+  try {
+    const rawChartData = await lessonCollection.aggregate([
+      { 
+        $match: { createdAt: { $exists: true, $ne: null } } 
+      },
+      {
+        $group: {
+          _id: { 
+            $dateToString: { 
+              format: "%u", 
+              date: { $toDate: "$createdAt" },
+              timezone: "Asia/Dhaka" 
+            } 
+          }, 
+          contributions: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    const dayMapping = {
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat",
+      "7": "Sun"
+    };
+
+    if (rawChartData && rawChartData.length > 0) {
+      chartData = daysOrder.map(day => {
+
+        const found = rawChartData.find(item => dayMapping[item._id] === day);
+        return {
+          name: day,
+          contributions: found ? found.contributions : 0 
+        };
+      });
+    }
+  } catch (e) {
+    console.error("❌ Error in Chart Aggregation Pipeline:", e.message);
+  }
+  res.send({
+    success: true,
+    totalLessons,
+    totalSaved,
+    recentLessons,
+    chartData
+  });
+});
+
+
+//User Dashboard
+app.get('/api/user/dashboard-summary', async (req, res) => {
+  try {
+    const { userId, email } = req.query; 
+    
+    if (!userId && !email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "User identity (userId or email) is required." 
+      });
+    }
+
+    const queryCondition = userId ? { creatorId: userId } : { creatorEmail: email };
+    const savedCondition = userId ? { userId: userId } : { userEmail: email };
+
+    const totalCreated = await lessonCollection.countDocuments(queryCondition);
+
+    let totalSaved = 0;
+    if (global.savedCollection) {
+      totalSaved = await savedCollection.countDocuments(savedCondition);
+    } else {
+   
+      totalSaved = await lessonCollection.countDocuments({ 
+        savedBy: userId ? userId : email 
+      });
+    }
+
+    const recentContributions = await lessonCollection
+      .find(queryCondition)
+      .sort({ createdAt: -1 }) 
+      .limit(3) 
+      .toArray();
+
+
+    const daysOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    let chartData = daysOrder.map(day => ({ name: day, contributions: 0 }));
+
+    const dayMapping = {
+      "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun"
+    };
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const rawChartData = await lessonCollection.aggregate([
+      { 
+        $match: { 
+          ...queryCondition, 
+          createdAt: { $gte: sevenDaysAgo, $exists: true, $ne: null } 
+        } 
+      },
+      {
+        $group: {
+          _id: { 
+            $dateToString: { 
+              format: "%u", 
+              date: { $toDate: "$createdAt" },
+              timezone: "Asia/Dhaka" 
+            } 
+          }, 
+          contributions: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    if (rawChartData && rawChartData.length > 0) {
+      chartData = daysOrder.map(day => {
+        const found = rawChartData.find(item => dayMapping[item._id] === day);
+        return {
+          name: day,
+          contributions: found ? found.contributions : 0 
+        };
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      totalCreated,
+      totalSaved,
+      recentContributions,
+      chartData
+    });
+
+  } catch (error) {
+    console.error("❌ Error in User Dashboard API:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error in synchronization layer.",
+      error: error.message 
+    });
+  }
+});
+
+
+
 
 
     await client.db("admin").command({ ping: 1 });
