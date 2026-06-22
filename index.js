@@ -130,12 +130,56 @@ async function run() {
     )
 })
 
-//eta sobai dekhte parbe. so don't need to verify
+//eta sobai dekhte parbe. so don't need to verify || Pagination added
 app.get("/lessons/all", async (req, res) => {
-      const result = await lessonCollection.find().sort({ createdAt: -1 }).toArray();
-      res.send(result);
-    });
+  try {
+    const { page = 1, limit = 9, search = "", category = "", tone = "", sortBy = "newest" } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
 
+ 
+    let query = {};
+
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
+      ];
+    }
+
+ 
+    if (category) {
+      query.category = category;
+    }
+
+   
+    if (tone) {
+      query.tone = tone;
+    }
+
+    let sortOptions = { createdAt: -1 }; 
+    if (sortBy === "mostSaved") {
+      sortOptions = { saveCount: -1 };
+    }
+
+   
+    const totalData = await lessonCollection.countDocuments(query);
+    const totalPage = Math.ceil(totalData / Number(limit));
+
+    
+    const result = await lessonCollection
+      .find(query)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(Number(limit))
+      .toArray();
+
+    res.send({ data: result, page: Number(page), totalPage });
+  } catch (err) {
+    console.error("Error fetching all lessons:", err);
+    res.status(500).send({ error: "Server error occurred" });
+  }
+});
 
     // 🎯 Top contributors API End-point
 
@@ -367,15 +411,20 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     app.get("/lessons/my/:creatorId", async (req, res) => {
       //  console.log( " request params: ",req.params)
   try {
+
+ 
+
     const creatorId = req.params.creatorId;
+
+        const {page=1,limit=9}=req.query;
+  const skip= (Number(page)-1) * Number(limit);
+  const totalData= await lessonCollection.countDocuments({creatorId});
+  const totalPage=Math.ceil(totalData/Number(limit))
    
 
-    const result = await lessonCollection
-      .find({ creatorId})
-      .sort({ createdAt: -1 })
-      .toArray();
+    const result = await lessonCollection.find({ creatorId}).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).toArray();
 
-    res.send(result);
+    res.send({data:result,page:Number(page),totalPage})
   } catch (err) {
     res.status(500).send({ error: "Failed to fetch lessons" });
   }
