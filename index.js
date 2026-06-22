@@ -95,13 +95,21 @@ const verifyPremiumUser=async(req,res,next)=>{
   }
   next()
 }
+const verifyAdmin=async(req,res,next)=>{
+  const user=req.user;
+  
+  if(user.role!=="admin"){
+    return res.status(403).send({message:"Forbidden"})
+  }
+  next()
+}
 
 async function run() {
   try {
     // await client.connect();
     
 
-    //lessons-----------todo
+    //lessons------
         app.post('/lessons',verifyToken,verifyPremiumUser, async (req, res) => {  
     const lessonData = req.body;
     console.log(lessonData)
@@ -140,7 +148,7 @@ app.get("/lessons/:id", async (req, res) => {
     });
 
 
-    // saved lessons--------todo
+    // saved lessons---
     app.post("/savedlessons",verifyToken,async (req, res) => {  
     const savedLessonData = req.body;
    
@@ -176,7 +184,7 @@ app.get("/lessons/:id", async (req, res) => {
     
 })
 
-// get favorite lessons from the saved lesson collection------todo
+// get favorite lessons from the saved lesson collection----
  app.get("/saved/lessons/favorite/:id",verifyToken, async (req, res) => {
       
     const {id} = req.params;
@@ -194,7 +202,7 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
   try {
     const LikedLessonData = req.body;
 
-    // ১. ইউজার ইতিমধ্যে লাইক করেছে কিনা চেক করা
+
     const alreadyLiked = await likedLessonCollection.findOne({
       lessonId: LikedLessonData.lessonId,
       userId: LikedLessonData.userId
@@ -375,10 +383,9 @@ app.delete("/lessons/:id", verifyToken, async (req, res) => {
     const id = req.params.id;
     const query = { _id: new ObjectId(id) };
 
-    // ১. মূল লেসন কালেকশন থেকে লেসনটি ডিলিট করুন
+   
     const result = await lessonCollection.deleteOne(query);
 
-    // ২. যদি মূল লেসনটি সফলভাবে ডিলিট হয় (deletedCount ১ বা তার বেশি হলে), তবে ফিচার্ড কালেকশন থেকেও সেটি ডিলিট করুন
     if (result.deletedCount > 0 || result.acknowledged) {
       await featuredLessonCollection.deleteOne({
         $or: [
@@ -494,7 +501,6 @@ app.patch('/profile/:id',verifyToken, async (req, res) => {
 
 
     //Subscription
-
  app.post("/subscription",verifyToken, async (req, res) => {
   try {
     console.log("API HIT");
@@ -539,8 +545,8 @@ app.patch('/profile/:id',verifyToken, async (req, res) => {
 
 
 //admin related code here........
-
-app.get("/users", async (req, res) => {
+//get all users information
+app.get("/users",verifyToken,verifyAdmin, async (req, res) => {
       const result = await userCollection.find().sort({ createdAt: -1 }).toArray();
       res.send(result);
     });
@@ -548,7 +554,7 @@ app.get("/users", async (req, res) => {
 
 //update user Information
 
-app.patch('/users/update/:id', async (req, res) => {
+app.patch('/users/update/:id',verifyToken, verifyAdmin, async (req, res) => {
   try {
     const id = req.params.id;
     const updateData = req.body;
@@ -573,7 +579,7 @@ app.patch('/users/update/:id', async (req, res) => {
 //----------------
 //post featured lessons
 
-app.post("/featured/lessons", async (req, res) => {
+app.post("/featured/lessons",verifyToken,verifyAdmin, async (req, res) => {
   const lesson = req.body;
   const lessonId = lesson._id;
   
@@ -605,7 +611,7 @@ app.post("/featured/lessons", async (req, res) => {
   }
 });
 
-//get featured lessons
+//get featured lessons---eta sobai dekhte parbe
 app.get("/featured/lessons", async (req, res) => {
       const result = await featuredLessonCollection.find().limit(4).sort({ createdAt: -1 }).toArray();
       res.send(result);
@@ -614,7 +620,7 @@ app.get("/featured/lessons", async (req, res) => {
 
 
 // Post report Lesson
-app.post('/report/lesson', async (req, res) => {  
+app.post('/report/lesson',verifyToken, async (req, res) => {  
   try {
     const lessonData = req.body;
     
@@ -666,13 +672,13 @@ app.post('/report/lesson', async (req, res) => {
 });
 
 //get reported lessons
-app.get("/report/lesson", async (req, res) => {
+app.get("/report/lesson",verifyToken,verifyAdmin, async (req, res) => {
       const result = await reportLessonCollection.find().sort({ createdAt: -1 }).toArray();
       res.send(result);
     });
 
 // Delete report Permanently
-app.delete("/report/lessons/delete/permanently/:id", async (req, res) => {
+app.delete("/report/lessons/delete/permanently/:id",verifyToken, verifyAdmin,async (req, res) => {
   try {
     const id = req.params.id;
     
@@ -710,7 +716,7 @@ app.delete("/report/lessons/delete/permanently/:id", async (req, res) => {
 });
 
 // Delete report from the reported lesson collection to ignore
-app.delete('/report/lessons/delete/ignore/:id', async (req, res) => {
+app.delete('/report/lessons/delete/ignore/:id',verifyToken,verifyAdmin, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -738,7 +744,7 @@ app.delete('/report/lessons/delete/ignore/:id', async (req, res) => {
 
 //dashboard er jonno information neyar jonno
 
-app.get("/api/admin/dashboard-summary", async (req, res) => {
+app.get("/api/admin/dashboard-summary",verifyToken,verifyAdmin, async (req, res) => {
   let totalLessons = 0;
   let totalSaved = 0;
   let recentLessons = [];
@@ -826,7 +832,7 @@ app.get("/api/admin/dashboard-summary", async (req, res) => {
 
 
 //User Dashboard
-app.get('/api/user/dashboard-summary', async (req, res) => {
+app.get('/api/user/dashboard-summary',verifyToken, async (req, res) => {
   try {
     const { userId, email } = req.query; 
     
