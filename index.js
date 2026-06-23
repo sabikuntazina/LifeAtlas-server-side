@@ -551,7 +551,7 @@ app.get("/api/lessons/:id",verifyToken, async (req, res) => {
 });
 
 // UPDATE LESSON----todo
-app.patch("/lessons/:id",verifyToken,verifyPremiumUser, async (req, res) => {
+app.patch("/lessons/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
