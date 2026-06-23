@@ -183,7 +183,7 @@ app.get("/lessons/all", async (req, res) => {
 
     // 🎯 Top contributors API End-point
 
-app.get('/api/lessons/top-contributors',verifyToken, async (req, res) => {
+app.get('/api/lessons/top-contributors', async (req, res) => {
   try {
 
     const topContributors = await lessonCollection.aggregate([
@@ -1048,22 +1048,7 @@ app.get('/api/user/dashboard-summary',verifyToken, async (req, res) => {
 
 
 
-//Home Page Extra section functions
-// app.get("/lessons/most-saved", async (req, res) => {
-//   try {
-//     // 🎯 লজিক চেঞ্জ: lessonCollection থেকে সরাসরি saveCount-এর ওপর ভিত্তি করে সর্ট করা হচ্ছে
-//     const topSavedLessons = await lessonCollection
-//       .find({ visibility: "public" }) // শুধুমাত্র পাবলিক লেসনগুলো দেখানোর জন্য (সেফটি চেক)
-//       .sort({ saveCount: -1 })       // সবচেয়ে বেশি সেভ কাউন্ট সবার ওপরে থাকবে
-//       .limit(5)                      // টপ ৫টি লেসন ফিল্টার করা হলো
-//       .toArray();
 
-//     res.send(topSavedLessons);
-//   } catch (err) {
-//     console.error("Error fetching top saved lessons from main collection:", err);
-//     res.status(500).send({ error: "Failed to fetch top saved lessons" });
-//   }
-// });
 
     // await client.db("admin").command({ ping: 1 });
     console.log(
