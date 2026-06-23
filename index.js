@@ -110,7 +110,7 @@ async function run() {
     
 
     //lessons------
-        app.post('/lessons',verifyToken,verifyPremiumUser, async (req, res) => {  
+        app.post('/lessons',verifyToken, async (req, res) => {  
     const lessonData = req.body;
     console.log(lessonData)
     const newLessonData={
