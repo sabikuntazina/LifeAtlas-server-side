@@ -439,7 +439,39 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     res.status(500).send({ error: "Failed to fetch lessons" });
   }
 });
-//toggle visibility---------todo, ekhane verifyadmin add kora lagbe
+//     app.get("/lessons/my/profile/:creatorId", async (req, res) => {
+//       //  console.log( " request params: ",req.params)
+//     const creatorId = req.params.creatorId;
+//     const result = await lessonCollection.find({ creatorId}).sort({ createdAt: -1 }).toArray();
+
+//     res.send(result)
+
+// });
+
+app.get("/lessons/creator/:creatorId", async (req, res) => {
+  try {
+    const creatorId = req.params.creatorId;
+    const result = await lessonCollection.find({ creatorId }).sort({ createdAt: -1 }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch creator lessons" });
+  }
+});
+
+app.get("/users/creator-info/:creatorId", async (req, res) => {
+  try {
+    const { ObjectId } = require('mongodb');
+    const creatorId = req.params.creatorId;
+    
+  
+    const result = await userCollection.findOne({ _id: new ObjectId(creatorId) });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch creator bio" });
+  }
+});
+
+//toggle visibility---------, ekhane verifyadmin add kora lagbe
 app.patch("/lessons/visibility/:id",verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
