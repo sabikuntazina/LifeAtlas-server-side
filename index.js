@@ -669,10 +669,22 @@ app.patch('/profile/:id',verifyToken, async (req, res) => {
 
 //admin related code here........
 //get all users information
-app.get("/users",verifyToken,verifyAdmin, async (req, res) => {
-      const result = await userCollection.find().sort({ createdAt: -1 }).toArray();
-      res.send(result);
-    });
+app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+    const users = await userCollection.find().sort({ createdAt: -1 }).toArray();
+
+    const usersWithLessonCount = await Promise.all(
+      users.map(async (user) => {
+        const targetId = user.id || user._id.toString();
+        const count = await lessonCollection.countDocuments({ creatorId: targetId });
+        return {
+          ...user,
+          totalLessons: count,
+        };
+      })
+    );
+
+    res.send(usersWithLessonCount);
+});
 
 
 //update user Information
