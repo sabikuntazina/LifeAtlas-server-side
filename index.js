@@ -267,7 +267,7 @@ app.get("/lessons/:id", async (req, res) => {
 
 
     // saved lessons---
-    app.post("/savedlessons",verifyToken,async (req, res) => {  
+app.post("/savedlessons", verifyToken, async (req, res) => {  
     const savedLessonData = req.body;
    
     const alreadySaved = await savedLessonCollection.findOne({
@@ -275,32 +275,46 @@ app.get("/lessons/:id", async (req, res) => {
       userId: savedLessonData.userId
     });
 
-   
     if (alreadySaved) {
-      return res.status(400).send({ 
-        success: false, 
-        message: "You have already saved this lesson!" 
+      await savedLessonCollection.deleteOne({
+        lessonId: savedLessonData.lessonId,
+        userId: savedLessonData.userId
+      });
+      
+      await lessonCollection.updateOne(
+        { _id: new ObjectId(savedLessonData.lessonId) },
+        { 
+          $inc: { saveCount: -1 }, 
+          $set: { isSaved: false }
+        }
+      );
+      
+      return res.status(200).send({ 
+        isSaved: false, 
+        message: "Lesson unsaved successfully" 
       });
     }
-    const newSavedLessonData={
-      ...savedLessonData,
-      createdAt:new Date(),
-    }
-    const result=await savedLessonCollection.insertOne(newSavedLessonData)
-    res.send(result);
 
-    //update lesson for user saved it 
-     const updateLesson = await lessonCollection.updateOne(
-      {
-        _id: new ObjectId(savedLessonData.lessonId),
-      },
-      {
-      $inc: { saveCount: 1 }
-      }
-    )
-    // res.send(updateLesson);
+    const newSavedLessonData = {
+      ...savedLessonData,
+      createdAt: new Date(),
+    };
     
-})
+    await savedLessonCollection.insertOne(newSavedLessonData);
+
+    await lessonCollection.updateOne(
+      { _id: new ObjectId(savedLessonData.lessonId) },
+      { 
+        $inc: { saveCount: 1 }, 
+        $set: { isSaved: true }
+      }
+    );
+
+    return res.status(200).send({
+      message: "Saved lesson successfully", 
+      isSaved: true
+    });
+});
 
 // get favorite lessons from the saved lesson collection----
  app.get("/saved/lessons/favorite/:id",verifyToken, async (req, res) => {
@@ -320,20 +334,29 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
   try {
     const LikedLessonData = req.body;
 
-
     const alreadyLiked = await likedLessonCollection.findOne({
       lessonId: LikedLessonData.lessonId,
       userId: LikedLessonData.userId
     });
 
     if (alreadyLiked) {
-      return res.status(400).send({ 
-        success: false, 
-        message: "You have already liked this lesson!" 
+      await likedLessonCollection.deleteOne({
+        lessonId: LikedLessonData.lessonId,
+        userId: LikedLessonData.userId
+      });
+
+      await lessonCollection.updateOne(
+        { _id: new ObjectId(LikedLessonData.lessonId) },
+        { $inc: { likeCount: -1 } }
+      );
+
+      return res.status(200).send({ 
+        success: true,
+        isLiked: false, 
+        message: "Lesson unliked successfully" 
       });
     }
 
-    // ২. নতুন লাইক ডেটা তৈরি ও ইনসার্ট করা
     const newLikedLessonData = {
       ...LikedLessonData,
       createdAt: new Date(),
@@ -341,18 +364,14 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     
     const result = await likedLessonCollection.insertOne(newLikedLessonData);
 
-  
     const updateLesson = await lessonCollection.updateOne(
-      {
-        _id: new ObjectId(LikedLessonData.lessonId),
-      },
-      {
-        $inc: { likeCount: 1 },
-      }
+      { _id: new ObjectId(LikedLessonData.lessonId) },
+      { $inc: { likeCount: 1 } }
     );
 
     return res.status(200).send({
       success: true,
+      isLiked: true,
       message: "Lesson liked successfully!",
       result,
       updateLesson,
@@ -362,7 +381,7 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     console.error("Backend Like Error:", error);
     return res.status(500).send({ 
       success: false, 
-      message: "Internal server error while liking lesson." 
+      message: "Internal server error while toggling like." 
     });
   }
 });
@@ -413,12 +432,8 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     // res.send(updateLesson);
 })
 
-
-
-
-
     //user lessons
-    app.get("/lessons/my/:creatorId", async (req, res) => {
+  app.get("/lessons/my/:creatorId", async (req, res) => {
       //  console.log( " request params: ",req.params)
   try {
 
@@ -439,14 +454,7 @@ app.post("/likedlessons", verifyToken, async (req, res) => {
     res.status(500).send({ error: "Failed to fetch lessons" });
   }
 });
-//     app.get("/lessons/my/profile/:creatorId", async (req, res) => {
-//       //  console.log( " request params: ",req.params)
-//     const creatorId = req.params.creatorId;
-//     const result = await lessonCollection.find({ creatorId}).sort({ createdAt: -1 }).toArray();
 
-//     res.send(result)
-
-// });
 
 app.get("/lessons/creator/:creatorId", async (req, res) => {
   try {
