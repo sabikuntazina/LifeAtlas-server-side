@@ -794,7 +794,57 @@ app.get("/featured/lessons", async (req, res) => {
 
 
 // Post report Lesson
-app.post('/report/lesson',verifyToken, async (req, res) => {  
+// app.post('/report/lesson',verifyToken, async (req, res) => {  
+//   try {
+//     const lessonData = req.body;
+    
+//     if (!lessonData._id) {
+//       return res.status(400).send({ success: false, message: "Lesson ID is required" });
+//     }
+
+//     const lessonIdStr = lessonData._id;
+
+//     const reportResult = await reportLessonCollection.updateOne(
+//       { lessonId: lessonIdStr }, 
+//       {
+//         $setOnInsert: {
+//           title: lessonData.title,
+//           description: lessonData.description,
+//           category: lessonData.category,
+//           access:lessonData.access,
+//           creatorName: lessonData.creatorName,
+//           creatorId:lessonData.creatorId,
+//           creatorPlan:lessonData.creatorPlan,
+//           saveCount:lessonData.saveCount,
+//           creatorId: lessonData.creatorId,
+//           createdAt: new Date(),
+//         },
+//         $inc: { reportCount: 1 }, // যতবার রিপোর্ট হবে এই কাউন্ট ১ করে বাড়বে
+//         $set: { updatedAt: new Date() } // সর্বশেষ রিপোর্টের সময় ট্র্যাক রাখার জন্য
+//       },
+//       { upsert: true } // ম্যাচ না করলে নতুন ডকুমেন্ট বানাবে, ম্যাচ করলে আপডেট করবে
+//     );
+
+//     // ২. মূল lessonCollection-এ রিপোর্টের মেইন কাউন্ট ১ বাড়িয়ে দেওয়া
+//     const updateLesson = await lessonCollection.updateOne(
+//       { _id: new ObjectId(lessonIdStr) },
+//       { $inc: { report: 1 } }
+//     );
+
+//     // ফ্রন্টএন্ডে সাকসেস রেসপন্স পাঠানো
+//     res.send({ 
+//       success: true, 
+//       message: "Report processed successfully", 
+//       reportResult, 
+//       updateLesson 
+//     });
+
+//   } catch (error) {
+//     console.error("Report Lesson Error:", error);
+//     res.status(500).send({ success: false, message: "Internal Server Error" });
+//   }
+// });
+app.post('/report/lesson', verifyToken, async (req, res) => {  
   try {
     const lessonData = req.body;
     
@@ -803,6 +853,7 @@ app.post('/report/lesson',verifyToken, async (req, res) => {
     }
 
     const lessonIdStr = lessonData._id;
+    const incomingReason = lessonData.reportReason || "Not specified";
 
     const reportResult = await reportLessonCollection.updateOne(
       { lessonId: lessonIdStr }, 
@@ -811,30 +862,33 @@ app.post('/report/lesson',verifyToken, async (req, res) => {
           title: lessonData.title,
           description: lessonData.description,
           category: lessonData.category,
-          access:lessonData.access,
+          access: lessonData.access,
           creatorName: lessonData.creatorName,
-          creatorId:lessonData.creatorId,
-          creatorPlan:lessonData.creatorPlan,
-          saveCount:lessonData.saveCount,
           creatorId: lessonData.creatorId,
+          creatorPlan: lessonData.creatorPlan,
+          saveCount: lessonData.saveCount,
           createdAt: new Date(),
         },
-        $inc: { reportCount: 1 }, // যতবার রিপোর্ট হবে এই কাউন্ট ১ করে বাড়বে
-        $set: { updatedAt: new Date() } // সর্বশেষ রিপোর্টের সময় ট্র্যাক রাখার জন্য
+        $inc: { reportCount: 1 }, 
+    
+        $addToSet: { reasons: incomingReason }, 
+        $set: { 
+          lastReportedReason: incomingReason, 
+          updatedAt: new Date() 
+        } 
       },
-      { upsert: true } // ম্যাচ না করলে নতুন ডকুমেন্ট বানাবে, ম্যাচ করলে আপডেট করবে
+      { upsert: true } 
     );
 
-    // ২. মূল lessonCollection-এ রিপোর্টের মেইন কাউন্ট ১ বাড়িয়ে দেওয়া
+
     const updateLesson = await lessonCollection.updateOne(
       { _id: new ObjectId(lessonIdStr) },
       { $inc: { report: 1 } }
     );
 
-    // ফ্রন্টএন্ডে সাকসেস রেসপন্স পাঠানো
     res.send({ 
       success: true, 
-      message: "Report processed successfully", 
+      message: "Report processed successfully with reason", 
       reportResult, 
       updateLesson 
     });
