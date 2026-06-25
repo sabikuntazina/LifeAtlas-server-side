@@ -479,6 +479,34 @@ app.get("/users/creator-info/:creatorId", async (req, res) => {
   }
 });
 
+app.get('/lessons/my/profile/:creatorId', async (req, res) => {
+  try {
+    const { creatorId } = req.params;
+
+    if (!creatorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Creator ID is required."
+      });
+    }
+
+    const lessons = await lessonCollection
+      .find({ creatorId: creatorId })
+      .sort({ createdAt: -1 }) 
+      .toArray();
+
+    res.status(200).json(lessons);
+
+  } catch (error) {
+    console.error("❌ Error in Fetching Profile Lessons API:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error while retrieving profile lessons.",
+      error: error.message
+    });
+  }
+});
+
 //toggle visibility---------, ekhane verifyadmin add kora lagbe
 app.patch("/lessons/visibility/:id",verifyToken, async (req, res) => {
   try {
